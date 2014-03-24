@@ -43,6 +43,7 @@
 #include "bcomdef.h"
 #include "OSAL.h"
 #include "hci.h"
+#include "hci_tl.h"
 #include "l2cap.h"
 #include "gap.h"
 #include "linkdb.h"

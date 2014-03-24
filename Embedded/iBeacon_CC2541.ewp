@@ -2182,10 +2182,19 @@
         <name>$PROJ_DIR$\BLE\include\gap.h</name>
       </file>
       <file>
+        <name>$PROJ_DIR$\BLE\include\gapgattserver.h</name>
+      </file>
+      <file>
         <name>$PROJ_DIR$\BLE\include\gatt.h</name>
       </file>
       <file>
+        <name>$PROJ_DIR$\BLE\include\gatt_profile_uuid.h</name>
+      </file>
+      <file>
         <name>$PROJ_DIR$\BLE\include\gatt_uuid.h</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$\BLE\include\gattservapp.h</name>
       </file>
       <file>
         <name>$PROJ_DIR$\BLE\include\hci.h</name>
@@ -2230,7 +2239,7 @@
     <group>
       <name>Libs</name>
       <file>
-        <name>$PROJ_DIR$\BLE\Libs\CC2541_BLE_bcast.lib</name>
+        <name>$PROJ_DIR$\BLE\Libs\CC2541_BLE_peri.lib</name>
       </file>
       <file>
         <name>$PROJ_DIR$\BLE\Libs\CC254x_BLE_HCI_TL_None.lib</name>
@@ -2461,13 +2470,19 @@
     <group>
       <name>Roles</name>
       <file>
-        <name>$PROJ_DIR$\Profiles\Roles\broadcaster.c</name>
-      </file>
-      <file>
-        <name>$PROJ_DIR$\Profiles\Roles\broadcaster.h</name>
-      </file>
-      <file>
         <name>$PROJ_DIR$\Profiles\Roles\gap.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$\Profiles\Roles\gapbondmgr.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$\Profiles\Roles\gapbondmgr.h</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$\Profiles\Roles\peripheral.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$\Profiles\Roles\peripheral.h</name>
       </file>
     </group>
   </group>

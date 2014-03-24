@@ -35,9 +35,10 @@
 
 #include "hci.h"
 #include "gap.h"
+#include "gapbondmgr.h"
 
-//#include "devinfoservice.h"
-#include "broadcaster.h"
+#include "peripheralBroadcaster.h"
+
 
 #include "iBeacon.h"
 
@@ -48,8 +49,14 @@
 // What is the advertising interval when device is discoverable (units of 625us, 1600=1000ms)
 #define DEFAULT_ADVERTISING_INTERVAL          1600
 
+// Wait time for advertisement in connection
+#define ADV_IN_CONN_WAIT                      500 // delay 500 ms
+
 // Length of bd addr as a string
 #define B_ADDR_STR_LEN                        15
+
+// Connection Pause Peripheral time value (in seconds)
+#define DEFAULT_CONN_PAUSE_PERIPHERAL         10
 
 /*********************************************************************
  * TYPEDEFS
@@ -118,9 +125,9 @@ static uint8 advertData[] =
   0x00, 0x00,
 
   /*Minor Value (2 Bytes)*/
-  0x00,0x00,
+  0x00, 0x00,
 
-  /*Measured Power*/
+  /*Measured Power: -53dB*/
   0xC5
 };
 
@@ -143,10 +150,17 @@ static char *bdAddr2Str ( uint8 *pAddr );
  */
 
 // GAP Role Callbacks
-static gapRolesCBs_t iBeacon_BroadcasterCBs =
+static gapRolesCBs_t iBeacon_PeripheralCBs =
 {
   peripheralStateNotificationCB,  // Profile State Change Callbacks
   NULL                            // When a valid RSSI is read from controller (not used by application)
+};
+
+// GAP Bond Manager Callbacks
+static gapBondCBs_t iBeacon_BondMgrCBs =
+{
+  NULL,                     // Passcode callback (not used by application)
+  NULL                      // Pairing / Bonding state Callback (not used by application)
 };
 
 /*********************************************************************
@@ -171,7 +185,10 @@ void iBeacon_Init( uint8 task_id )
 {
   iBeacon_TaskID = task_id;
 
-  // Setup the GAP Broadcaster Role Profile
+  // Setup the GAP
+  VOID GAP_SetParamValue( TGAP_CONN_PAUSE_PERIPHERAL, DEFAULT_CONN_PAUSE_PERIPHERAL );
+  
+  // Setup the GAP Peripheral Role Profile
   {
     // Do not start device advertising upon initialization, until a button is
     // pushed
@@ -179,7 +196,8 @@ void iBeacon_Init( uint8 task_id )
 
     uint16 gapRole_AdvertOffTime = 6400; // (units of 625us, 6400=4000ms)
       
-    uint8 advType = GAP_ADTYPE_ADV_NONCONN_IND;   // use non-connectable advertisements
+    //uint8 advType = GAP_ADTYPE_ADV_NONCONN_IND;   // use non-connectable advertisements
+    uint8 advType = GAP_ADTYPE_ADV_IND;
 
     // Set the GAP Role Parameters
     GAPRole_SetParameter( GAPROLE_ADVERT_ENABLED, sizeof( uint8 ), &initial_advertising_enable );
@@ -230,7 +248,7 @@ void iBeacon_Init( uint8 task_id )
 
 #if (defined HAL_LCD) && (HAL_LCD == TRUE)  
 
-  HalLcdWriteString( "BLE Broadcaster", HAL_LCD_LINE_1 );
+  HalLcdWriteString( "BLE iBeacon", HAL_LCD_LINE_1 );
   
 #endif // (defined HAL_LCD) && (HAL_LCD == TRUE)  
   
@@ -275,9 +293,19 @@ uint16 iBeacon_ProcessEvent( uint8 task_id, uint16 events )
   if ( events & IBEACON_START_DEVICE_EVT )
   {
     // Start the Device
-    VOID GAPRole_StartDevice( &iBeacon_BroadcasterCBs );
+    VOID GAPRole_StartDevice( &iBeacon_PeripheralCBs );
+    
+    // Start Bond Manager
+    VOID GAPBondMgr_Register( &iBeacon_BondMgrCBs );
     
     return ( events ^ IBEACON_START_DEVICE_EVT );
+  }
+  
+  if ( events & IBEACON_ADV_IN_CONNECTION_EVT )
+  {
+    uint8 turnOnAdv = TRUE;
+    // Turn on advertising while in a connection
+    GAPRole_SetParameter( GAPROLE_ADVERT_ENABLED, sizeof( uint8 ), &turnOnAdv );
   }
   
   // Discard unknown events
@@ -326,7 +354,7 @@ static void iBeacon_HandleKeys( uint8 shift, uint8 keys )
 {
   VOID shift;  // Intentionally unreferenced parameter
 
-  if ( keys & HAL_KEY_SW_2 )
+  if ( (keys & HAL_KEY_SW_2) != 0 )
   {
     // ressing the right key should toggle advertising on and off
     uint8 current_adv_enabled_status;
@@ -376,7 +404,7 @@ static void peripheralStateNotificationCB( gaprole_States_t newState )
         #endif // (defined HAL_LCD) && (HAL_LCD == TRUE)    
         #ifdef CC2540_MINIDK
           // Visual feedback that we have initialized
-          HalLedSet( HAL_LED_2, HAL_LED_MODE_ON );
+          HalLedSet( HAL_LED_1 | HAL_LED_2, HAL_LED_MODE_ON );
         #endif //CC2540_MINIDK
       }
       break;
@@ -388,13 +416,30 @@ static void peripheralStateNotificationCB( gaprole_States_t newState )
         #endif // (defined HAL_LCD) && (HAL_LCD == TRUE)            
           
         #ifdef CC2540_MINIDK
-          // Visual feedback that we are advertising.
+          // Visual feedback (RED) that we are advertising.
+          HalLedSet( HAL_LED_1, HAL_LED_MODE_OFF );
+          HalLedSet( HAL_LED_2, HAL_LED_MODE_ON );
+        #endif //CC2540_MINIDK
+      }
+      break;
+
+    case GAPROLE_CONNECTED:
+      {
+        // Enable advertisement in connection
+        osal_start_timerEx( iBeacon_TaskID, IBEACON_ADV_IN_CONNECTION_EVT, ADV_IN_CONN_WAIT );
+        
+        #if (defined HAL_LCD) && (HAL_LCD == TRUE)
+          HalLcdWriteString( "Connected",  HAL_LCD_LINE_3 );
+        #endif // (defined HAL_LCD) && (HAL_LCD == TRUE)            
+          
+        #ifdef CC2540_MINIDK
+          // Visual feedback (GREEN) that we are connected.
           HalLedSet( HAL_LED_2, HAL_LED_MODE_OFF );
           HalLedSet( HAL_LED_1, HAL_LED_MODE_ON );
         #endif //CC2540_MINIDK
       }
       break;
-
+      
     case GAPROLE_WAITING:
       {
         #if (defined HAL_LCD) && (HAL_LCD == TRUE)
@@ -413,7 +458,7 @@ static void peripheralStateNotificationCB( gaprole_States_t newState )
         #endif // (defined HAL_LCD) && (HAL_LCD == TRUE)            
         #ifdef CC2540_MINIDK
           // Visual feedback that we have an error
-          HalLedSet( HAL_LED_2, HAL_LED_MODE_ON );
+          HalLedSet( HAL_LED_1 | HAL_LED_2, HAL_LED_MODE_ON );
         #endif //CC2540_MINIDK
       }
       break;      

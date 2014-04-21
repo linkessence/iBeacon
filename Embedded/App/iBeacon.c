@@ -46,8 +46,8 @@
  * CONSTANTS
  */
 
-// What is the advertising interval when device is discoverable (units of 625us, 1600=1000ms)
-#define DEFAULT_ADVERTISING_INTERVAL          1600
+// What is the advertising interval when device is discoverable (units of 625us, 640=400ms)
+#define DEFAULT_ADVERTISING_INTERVAL          640
 
 // Wait time for advertisement in connection
 #define ADV_IN_CONN_WAIT                      500 // delay 500 ms

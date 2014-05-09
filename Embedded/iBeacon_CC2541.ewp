@@ -2156,6 +2156,9 @@
       <name>$PROJ_DIR$\App\iBeacon.c</name>
     </file>
     <file>
+      <name>$PROJ_DIR$\App\iBeacon.h</name>
+    </file>
+    <file>
       <name>$PROJ_DIR$\App\iBeacon_main.c</name>
     </file>
     <file>

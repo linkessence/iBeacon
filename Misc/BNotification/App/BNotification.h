@@ -31,6 +31,16 @@ extern "C" {
 // BNotification Application Task Events
 #define APP_START_DEVICE_EVT                              0x0001
 #define APP_START_DISCOVERY_EVT                           0x0002
+  
+/*********************************************************************
+ * EXTERNAL VARIABLES
+ */
+// Task ID
+extern uint8 BNotification_TaskID;
+
+// Connect handle
+extern uint16 BNotification_ConnHandle;
+
 /*
  * Task Initialization for the BLE Notification Application
  */
@@ -74,6 +84,31 @@ enum
 
   DISC_FAILED = 0xFF                      // Discovery failed
 };
+
+// BNotification App handle cache indexes
+enum
+{
+  HDL_ANCS_NTF_START,                     // ANCS notification start handle
+  HDL_ANCS_NTF_END,                       // ANCS notification end handle
+  HDL_ANCS_NTF_CCCD,                      // ANCS notification CCCD
+  
+  HDL_ALERT_NTF_NEW_START,                // New alert start handle
+  HDL_ALERT_NTF_NEW_END,                  // New alert end handle
+  HDL_ALERT_NTF_UNREAD_START,             // Unread alert status start handle
+  HDL_ALERT_NTF_UNREAD_END,               // Unread alert status end handle
+  HDL_ALERT_NTF_CTRL,                     // Alert notification control point
+  HDL_ALERT_NTF_NEW_CAT,                  // Supported New Alert Category
+  HDL_ALERT_NTF_UNREAD_CAT,               // Supported Unread Alert Category
+  HDL_ALERT_NTF_NEW_CCCD,                 // New alert CCCD
+  HDL_ALERT_NTF_UNREAD_CCCD,              // Alert unread alert status CCCD
+
+  HDL_BATT_LEVEL_START,                   // Battery level start handle
+  HDL_BATT_LEVEL_END,                     // Battery level end handle
+  HDL_BATT_LEVEL_CCCD,                    // Battery level CCCD
+
+  HDL_CACHE_LEN
+};
+
 
 #ifdef __cplusplus
 }

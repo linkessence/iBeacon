@@ -112,9 +112,11 @@
  * EXTERNAL VARIABLES
  */
 
-/*********************************************************************
- * EXTERNAL FUNCTIONS
- */
+// Task ID
+uint8 BNotification_TaskID = 0;
+
+// Connect handle
+uint16 BNotification_ConnHandle = 0;
 
 /*********************************************************************
  * LOCAL VARIABLES
@@ -159,16 +161,14 @@ static uint8 BNotification_App_AdvData[] =
 // Device name attribute value
 static uint8 BNotification_App_DeviceName[GAP_DEVICE_NAME_LEN] = "BLE jewelry";
 
-// Task ID
-static uint8 BNotification_TaskID = 0;
-
-// Connect handle
-static uint16 BNotification_ConnHandle = 0;
-
 // Bonded peer address
 static uint8 BNotification_BondedAddr[B_ADDR_LEN];
 
 static bool BNotification_isBonded = FALSE;
+
+/*********************************************************************
+ * EXTERNAL FUNCTIONS
+ */
 
 /*********************************************************************
  * LOCAL FUNCTIONS

@@ -1,0 +1,9 @@
+主机：
+	通常当有lcd的NewSmartRF开发板会烧写主机程序（SimpleBLECentral），然后另外一个烧写从机程序（SimpleBLEPeripheral）
+	我们在SimpleBLECentral基础上添加了串口打印功能，也就是当前目录提供的：SimpleBLECentral_SerialPrint.rar
+
+从机：
+	不带lcd的开发板一般烧写SimpleBLEPeripheral从机程序
+	该demo，未作任何修改，可以直接使用协议栈工程里的SimpleBLEPeripheral工程。
+
+主要注意的是，该主机程序是无法搜索到Keyfob防丢器的，因为主机搜索时限制了service为0xfff0

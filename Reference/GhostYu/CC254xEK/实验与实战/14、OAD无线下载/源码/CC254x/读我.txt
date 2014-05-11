@@ -1,0 +1,5 @@
+BIM路径：
+BLE-CC254x-x.x.x\Projects\ble\util\BIM
+
+直接使用协议栈中默认的SimpleBLEPeripheral即可，IMAGE-A与IMAGE-B已经配置OK
+BLE-CC254x-x.x.x\Projects\ble\SimpleBLEPeripheral

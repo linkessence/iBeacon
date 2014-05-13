@@ -41,6 +41,7 @@
 #include "gatt.h"
 #include "gattservapp.h"
 #include "gatt_profile_uuid.h"
+#include "devinfoservice.h"
 
 #include "linkdb.h"
 
@@ -99,6 +100,9 @@
 #define DEFAULT_DISCOVERY_DELAY               100
 
 
+// Configuration states
+#define BNOTIFICATION_CONFIG_START            0x00
+#define BNOTIFICATION_CONFIG_CMPL             0xFF
 
 /*********************************************************************
  * TYPEDEFS
@@ -165,6 +169,10 @@ static uint8 BNotification_App_DeviceName[GAP_DEVICE_NAME_LEN] = "BLE jewelry";
 static uint8 BNotification_BondedAddr[B_ADDR_LEN];
 
 static bool BNotification_isBonded = FALSE;
+static bool BNotification_DiscoveryCmpl = FALSE;
+
+static uint8 BNotification_ConfigState;
+static uint8 BNotification_DiscState;
 
 /*********************************************************************
  * EXTERNAL FUNCTIONS
@@ -178,6 +186,11 @@ static void peripheralStateNotificationCB( gaprole_States_t newState );
 static void passcodeCB( uint8 *deviceAddr, uint16 connectionHandle,
                                         uint8 uiInputs, uint8 uiOutputs );
 static void pairStateCB( uint16 connHandle, uint8 state, uint8 status );
+static void BNotification_App_ProcessGattMsg( gattMsgEvent_t *pMsg );
+static void BNotification_App_ProcessAncsMsg( gattMsgEvent_t *pMsg );
+static void BNotification_App_IndGattMsg( gattMsgEvent_t *pMsg );
+static uint8 BNotification_App_ConfigGattMsg( uint8 state, gattMsgEvent_t *pMsg );
+static uint8 BNotification_App_ConfigNext( uint8 state );
 
 #if defined( CC2540_MINIDK )
 static void BNotification_App_HandleKeys( uint8 shift, uint8 keys );
@@ -280,6 +293,7 @@ void BNotification_App_Init( uint8 task_id )
   // Initialize GATT attributes
   GGS_AddService( GATT_ALL_SERVICES );         // GAP
   GATTServApp_AddService( GATT_ALL_SERVICES ); // GATT attributes
+  DevInfo_AddService();                        // Device Information Service
  
 #if defined( CC2540_MINIDK )
  
@@ -367,7 +381,7 @@ uint16 BNotification_App_ProcessEvent( uint8 task_id, uint16 events )
   if ( events & APP_START_DISCOVERY_EVT )
   {
     // Start discovery
-    BNotification_StartDiscovery();
+    BNotification_DiscState = BNotification_StartDiscovery();
     
     // return unprocessed events
     return ( events ^ APP_START_DISCOVERY_EVT );
@@ -397,6 +411,7 @@ static void BNotification_App_ProcessOSALMsg( osal_event_hdr_t *pMsg )
   #endif // CC2540_MINIDK
       
   case GATT_MSG_EVENT:
+    BNotification_App_ProcessGattMsg( (gattMsgEvent_t *) pMsg );
     break;
   default:
     // do nothing
@@ -404,46 +419,147 @@ static void BNotification_App_ProcessOSALMsg( osal_event_hdr_t *pMsg )
   }
 }
 
-#if defined( CC2540_MINIDK )
 /*********************************************************************
- * @fn      BNotification_HandleKeys
+ * @fn      BNotification_App_ProcessGattMsg
  *
- * @brief   Handles all key events for this device.
- *
- * @param   shift - true if in shift/alt.
- * @param   keys - bit field for key events. Valid entries:
- *                 HAL_KEY_SW_2
- *                 HAL_KEY_SW_1
+ * @brief   Process GATT messages
  *
  * @return  none
  */
-static void BNotification_App_HandleKeys( uint8 shift, uint8 keys )
+static void BNotification_App_ProcessGattMsg( gattMsgEvent_t *pMsg )
 {
-  VOID shift;  // Intentionally unreferenced parameter
-
-  if ( (keys & HAL_KEY_SW_2) != 0 )
+  if ( pMsg->method == ATT_HANDLE_VALUE_NOTI || pMsg->method == ATT_HANDLE_VALUE_IND )
   {
-    // ressing the right key should toggle advertising on and off
-    uint8 current_adv_enabled_status;
-    uint8 new_adv_enabled_status;
-    
-    //Find the current GAP advertisement status
-    GAPRole_GetParameter( GAPROLE_ADVERT_ENABLED, &current_adv_enabled_status );
-    
-    if( current_adv_enabled_status == FALSE )
+    BNotification_App_ProcessAncsMsg(pMsg);
+    return;
+  }   
+  if ( ( pMsg->method == ATT_WRITE_RSP ) ||
+       ( ( pMsg->method == ATT_ERROR_RSP ) &&
+         ( pMsg->msg.errorRsp.reqOpcode == ATT_WRITE_REQ ) ) )
+  {
+    return;
+  }  
+  
+  if ( pMsg->method == ATT_HANDLE_VALUE_NOTI ||
+       pMsg->method == ATT_HANDLE_VALUE_IND )
+  {
+    BNotification_App_IndGattMsg( pMsg );
+  }
+  else if ( ( pMsg->method == ATT_READ_RSP || pMsg->method == ATT_WRITE_RSP ) ||
+            ( pMsg->method == ATT_ERROR_RSP &&
+              ( pMsg->msg.errorRsp.reqOpcode == ATT_READ_REQ ||
+                pMsg->msg.errorRsp.reqOpcode == ATT_WRITE_REQ ) ) )
+  {
+    BNotification_ConfigState = BNotification_App_ConfigGattMsg ( BNotification_ConfigState, pMsg );
+    if ( BNotification_ConfigState == BNOTIFICATION_CONFIG_CMPL )
     {
-      new_adv_enabled_status = TRUE;
+      BNotification_DiscoveryCmpl = TRUE;
     }
-    else
-    {
-      new_adv_enabled_status = FALSE;
+  }
+  else
+  {
+    BNotification_DiscState = BNotification_App_DiscGattMsg( BNotification_DiscState, pMsg );
+    if ( BNotification_DiscState == DISC_IDLE )
+    {      
+      // Start characteristic configuration
+      BNotification_ConfigState = BNotification_App_ConfigNext( BNOTIFICATION_CONFIG_START );
     }
-    
-    //change the GAP advertisement status to opposite of current status
-    GAPRole_SetParameter( GAPROLE_ADVERT_ENABLED, sizeof( uint8 ), &new_adv_enabled_status );
   }
 }
-#endif // CC2540_MINIDK
+
+/*********************************************************************
+ * @fn      BNotification_App_ConfigGattMsg()
+   *
+ * @brief   Handle GATT messages for characteristic configuration.
+ *
+ * @param   state - Discovery state.
+ * @param   pMsg - GATT message.
+ *
+ * @return  New configuration state.
+ */
+static uint8 BNotification_App_ConfigGattMsg( uint8 state, gattMsgEvent_t *pMsg )
+{
+  return BNotification_App_ConfigNext( state + 1 );
+}
+
+static uint8 BNotification_App_ConfigNext( uint8 state )
+{
+  return BNOTIFICATION_CONFIG_CMPL - 1;
+}
+
+/*********************************************************************
+ * @fn      BNotification_App_IndGattMsg
+ *
+ * @brief   Handle indications and notifications. 
+ *
+ * @param   pMsg - GATT message.
+ *
+ * @return  none
+ */
+static void BNotification_App_IndGattMsg( gattMsgEvent_t *pMsg )
+{
+  uint8 i;
+  
+  // Look up the handle in the handle cache
+  for ( i = 0; i < HDL_CACHE_LEN; i++ )
+  {
+    if ( pMsg->msg.handleValueNoti.handle == BNotification_HdlCache[i] )
+    {
+      break;
+    }
+  }
+
+  // Perform processing for this handle 
+  switch ( i )
+  {
+    case HDL_ALERT_NTF_UNREAD_START:
+      // Display unread message alert
+      break;
+      
+    case HDL_ALERT_NTF_NEW_START:
+      // Display incoming message
+      break;
+
+    case HDL_BATT_LEVEL_START:
+      // Display battery level
+      break;
+    default:
+      break;
+  }
+  
+  // Send confirm for indication
+  if ( pMsg->method == ATT_HANDLE_VALUE_IND )
+  {
+    ATT_HandleValueCfm( pMsg->connHandle );
+  }
+}
+
+static void BNotification_App_ProcessAncsMsg( gattMsgEvent_t *pMsg )
+{
+  if(pMsg->msg.handleValueNoti.len != 8)
+          return;
+  //ANCS Notification Source
+  //EventID(1-byte)+ EventFlags(1-byte)+ CategoryID(1-byte)+ CategoryCount(1-byte)+ NotificationUID(4-byte)
+  if(pMsg->msg.handleValueNoti.value[0]==0x00 && pMsg->msg.handleValueNoti.value[2]==0x01 /*calling*/){
+          //new incomming call
+  }
+  if(pMsg->msg.handleValueNoti.value[0]==0x02 && pMsg->msg.handleValueNoti.value[2]==0x01 /*calling*/){
+          //remove incomming call
+  }
+  if(pMsg->msg.handleValueNoti.value[0]==0x00 && pMsg->msg.handleValueNoti.value[2]==0x02 /*calling*/){
+          //miss call
+  }
+  if(pMsg->msg.handleValueNoti.value[0]==0x02 && pMsg->msg.handleValueNoti.value[2]==0x02 /*calling*/){
+          //remove miss call
+  }
+  if(pMsg->msg.handleValueNoti.value[0]==0x00 && pMsg->msg.handleValueNoti.value[2]==0x04 /*Social msg*/){
+          //new msg
+  }
+  if(pMsg->msg.handleValueNoti.value[0]==0x02 && pMsg->msg.handleValueNoti.value[2]==0x04 ){
+          //remove unread msg
+  }
+}
+
 
 /*********************************************************************
  * @fn      peripheralStateNotificationCB
@@ -486,11 +602,32 @@ static void peripheralStateNotificationCB( gaprole_States_t newState )
     case GAPROLE_STARTED:
     {
       uint16 advInt = DEFAULT_SLOW_ADV_INTERVAL;
+      uint8 ownAddress[B_ADDR_LEN];
+      uint8 systemId[DEVINFO_SYSTEM_ID_LEN];
+
       GAP_SetParamValue( TGAP_LIM_DISC_ADV_INT_MIN, advInt );
       GAP_SetParamValue( TGAP_LIM_DISC_ADV_INT_MAX, advInt );
       GAP_SetParamValue( TGAP_GEN_DISC_ADV_INT_MIN, advInt );
       GAP_SetParamValue( TGAP_GEN_DISC_ADV_INT_MAX, advInt );
       GAP_SetParamValue( TGAP_GEN_DISC_ADV_MIN, 0 );
+
+      GAPRole_GetParameter(GAPROLE_BD_ADDR, ownAddress);
+
+      // use 6 bytes of device address for 8 bytes of system ID value
+      systemId[0] = ownAddress[0];
+      systemId[1] = ownAddress[1];
+      systemId[2] = ownAddress[2];
+
+      // set middle bytes to zero
+      systemId[4] = 0x00;
+      systemId[3] = 0x00;
+
+      // shift three bytes up
+      systemId[7] = ownAddress[5];
+      systemId[6] = ownAddress[4];
+      systemId[5] = ownAddress[3];
+
+      DevInfo_SetParameter(DEVINFO_SYSTEM_ID, DEVINFO_SYSTEM_ID_LEN, systemId);
     }
     break;
       
@@ -510,13 +647,11 @@ static void peripheralStateNotificationCB( gaprole_States_t newState )
 
     case GAPROLE_CONNECTED:
     {
-      linkDBItem_t  *pItem;
-      
       // Get the connection handle
       GAPRole_GetParameter( GAPROLE_CONNHANDLE, &BNotification_ConnHandle);
       
       // Get peer bd address
-      if ( (pItem = linkDB_Find( BNotification_ConnHandle )) != NULL)
+      if ( linkDB_Find( BNotification_ConnHandle ) != NULL)
       {
         // Connected
         
@@ -581,7 +716,7 @@ static void peripheralStateNotificationCB( gaprole_States_t newState )
 static void passcodeCB( uint8 *deviceAddr, uint16 connectionHandle,
                         uint8 uiInputs, uint8 uiOutputs )
 {
-
+  GAPBondMgr_PasscodeRsp( connectionHandle, SUCCESS, DEFAULT_PASSCODE );
 }
 
 /*********************************************************************
@@ -595,6 +730,7 @@ static void pairStateCB( uint16 connHandle, uint8 state, uint8 status )
 {
   if ( state == GAPBOND_PAIRING_STATE_STARTED )
   {
+    
   }
   else if ( state == GAPBOND_PAIRING_STATE_COMPLETE )
   {
@@ -614,6 +750,47 @@ static void pairStateCB( uint16 connHandle, uint8 state, uint8 status )
   }
 }
 
+#if defined( CC2540_MINIDK )
+/*********************************************************************
+ * @fn      BNotification_HandleKeys
+ *
+ * @brief   Handles all key events for this device.
+ *
+ * @param   shift - true if in shift/alt.
+ * @param   keys - bit field for key events. Valid entries:
+ *                 HAL_KEY_SW_2
+ *                 HAL_KEY_SW_1
+ *
+ * @return  none
+ */
+static void BNotification_App_HandleKeys( uint8 shift, uint8 keys )
+{
+  VOID shift;  // Intentionally unreferenced parameter
 
+  if ( (keys & HAL_KEY_SW_2) != 0 )
+  {
+    // ressing the right key should toggle advertising on and off
+    uint8 current_adv_enabled_status;
+    uint8 new_adv_enabled_status;
+    
+    //Find the current GAP advertisement status
+    GAPRole_GetParameter( GAPROLE_ADVERT_ENABLED, &current_adv_enabled_status );
+    
+    if( current_adv_enabled_status == FALSE )
+    {
+      new_adv_enabled_status = TRUE;
+    }
+    else
+    {
+      new_adv_enabled_status = FALSE;
+    }
+    
+    //change the GAP advertisement status to opposite of current status
+    GAPRole_SetParameter( GAPROLE_ADVERT_ENABLED, sizeof( uint8 ), &new_adv_enabled_status );
+  }
+}
+
+#endif // CC2540_MINIDK
 /*********************************************************************
 *********************************************************************/
+

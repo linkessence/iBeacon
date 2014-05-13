@@ -22,7 +22,8 @@
 #ifndef __BNOTIFICATION_H_
 #define __BNOTIFICATION_H_
 
-#include "hal_types.h"
+#include <hal_types.h>
+#include <gatt.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,6 +109,9 @@ enum
 
   HDL_CACHE_LEN
 };
+
+// Attribute handle cache
+extern uint16 BNotification_HdlCache[HDL_CACHE_LEN];
 
 
 #ifdef __cplusplus

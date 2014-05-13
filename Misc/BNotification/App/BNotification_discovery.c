@@ -167,8 +167,8 @@ static uint8 BNotification_App_DiscANCS( uint8 state, gattMsgEvent_t *pMsg )
   {
   case DISC_ANCS_START:
     {
-      uint8 uuid[ATT_UUID_SIZE] = { 0x79, 0x05, 0xF4, 0x31, 0xB5, 0xCE, 0x4E, 0x99,
-      0xA4, 0x0F, 0x4B, 0x1E, 0x12, 0x2D, 0x00, 0xD0 };
+      uint8 uuid[ATT_UUID_SIZE] = {0xd0, 0x00, 0x2d, 0x12, 0x1e, 0x4b, 0x0f, 
+        0xa4, 0x99, 0x4e, 0xce, 0xb5, 0x31, 0xf4, 0x05, 0x79};
       
       // Initialize service discovery variables
       BNotification_SvcStartHdl = BNotification_SvcEndHdl = 0;
@@ -500,7 +500,7 @@ static uint8 BNotification_App_DiscAlertNtf( uint8 state, gattMsgEvent_t *pMsg )
         else
         {
           // Missing required characteristic descriptor
-          timeAppHdlCache[HDL_ALERT_NTF_NEW_START] = 0;
+          BNotification_HdlCache[HDL_ALERT_NTF_NEW_START] = 0;
           newState = DISC_FAILED;
         }
       }
@@ -543,14 +543,14 @@ static uint8 BNotification_App_DiscAlertNtf( uint8 state, gattMsgEvent_t *pMsg )
         if ( BNotification_HdlCache[HDL_ALERT_NTF_NEW_CCCD] != 0 )
         {
           // Should we look for unread category status CCCD
-          if ( timeAppHdlCache[HDL_ALERT_NTF_UNREAD_START] <
-              timeAppHdlCache[HDL_ALERT_NTF_UNREAD_END] )
+          if ( BNotification_HdlCache[HDL_ALERT_NTF_UNREAD_START] <
+              BNotification_HdlCache[HDL_ALERT_NTF_UNREAD_END] )
           {
             // Discover unread category status characteristic descriptors
-            GATT_DiscAllCharDescs( timeAppConnHandle,
-                                  timeAppHdlCache[HDL_ALERT_NTF_UNREAD_START] + 1,
-                                  timeAppHdlCache[HDL_ALERT_NTF_UNREAD_END],
-                                  timeAppTaskId );
+            GATT_DiscAllCharDescs( BNotification_ConnHandle,
+                                  BNotification_HdlCache[HDL_ALERT_NTF_UNREAD_START] + 1,
+                                  BNotification_HdlCache[HDL_ALERT_NTF_UNREAD_END],
+                                  BNotification_TaskID );
             
             newState = DISC_ALERT_NTF_UNREAD_CCCD;
           }
@@ -563,7 +563,7 @@ static uint8 BNotification_App_DiscAlertNtf( uint8 state, gattMsgEvent_t *pMsg )
         else
         {
           // Missing required characteristic descriptor
-          timeAppHdlCache[HDL_ALERT_NTF_NEW_START] = 0;
+          BNotification_HdlCache[HDL_ALERT_NTF_NEW_START] = 0;
           newState = DISC_FAILED;
         }          
       }
@@ -589,7 +589,7 @@ static uint8 BNotification_App_DiscAlertNtf( uint8 state, gattMsgEvent_t *pMsg )
                HI_UINT16(GATT_CLIENT_CHAR_CFG_UUID)) )
           {
             // CCCD found
-            timeAppHdlCache[HDL_ALERT_NTF_UNREAD_CCCD] =
+            BNotification_HdlCache[HDL_ALERT_NTF_UNREAD_CCCD] =
               pMsg->msg.findInfoRsp.info.btPair[i].handle;
             
             break;
@@ -636,12 +636,12 @@ static uint8 BNotification_App_DiscBatt( uint8 state, gattMsgEvent_t *pMsg )
       HI_UINT16(BATT_SERV_UUID) };
       
       // Initialize service discovery variables
-      timeAppSvcStartHdl = timeAppSvcEndHdl = 0;
-      timeAppEndHdlIdx = 0;
+      BNotification_SvcStartHdl = BNotification_SvcEndHdl = 0;
+      BNotification_EndHdlIdx = 0;
       
       // Discover service by UUID
-      GATT_DiscPrimaryServiceByUUID( timeAppConnHandle, uuid,
-                                    ATT_BT_UUID_SIZE, timeAppTaskId );      
+      GATT_DiscPrimaryServiceByUUID( BNotification_ConnHandle, uuid,
+                                    ATT_BT_UUID_SIZE, BNotification_TaskID );      
       
       newState = DISC_BATT_SVC;
     } 
@@ -652,8 +652,8 @@ static uint8 BNotification_App_DiscBatt( uint8 state, gattMsgEvent_t *pMsg )
     if ( pMsg->method == ATT_FIND_BY_TYPE_VALUE_RSP &&
         pMsg->msg.findByTypeValueRsp.numInfo > 0 )
     {
-      timeAppSvcStartHdl = pMsg->msg.findByTypeValueRsp.handlesInfo[0].handle;
-      timeAppSvcEndHdl = pMsg->msg.findByTypeValueRsp.handlesInfo[0].grpEndHandle;
+      BNotification_SvcStartHdl = pMsg->msg.findByTypeValueRsp.handlesInfo[0].handle;
+      BNotification_SvcEndHdl = pMsg->msg.findByTypeValueRsp.handlesInfo[0].grpEndHandle;
     }
     
     // If procedure complete
@@ -662,11 +662,11 @@ static uint8 BNotification_App_DiscBatt( uint8 state, gattMsgEvent_t *pMsg )
         ( pMsg->method == ATT_ERROR_RSP ) )
     {
       // If service found
-      if ( timeAppSvcStartHdl != 0 )
+      if ( BNotification_SvcStartHdl != 0 )
       {
         // Discover all characteristics
-        GATT_DiscAllChars( timeAppConnHandle, timeAppSvcStartHdl,
-                          timeAppSvcEndHdl, timeAppTaskId );
+        GATT_DiscAllChars( BNotification_ConnHandle, BNotification_SvcStartHdl,
+                          BNotification_SvcEndHdl, BNotification_TaskID );
         
         newState = DISC_BATT_CHAR;
       }
@@ -699,20 +699,20 @@ static uint8 BNotification_App_DiscBatt( uint8 state, gattMsgEvent_t *pMsg )
           uuid = BUILD_UINT16(p[5], p[6]);
           
           // If looking for end handle
-          if ( timeAppEndHdlIdx != 0 )
+          if ( BNotification_EndHdlIdx != 0 )
           {
             // End handle is one less than handle of characteristic declaration
-            timeAppHdlCache[timeAppEndHdlIdx] = BUILD_UINT16(p[0], p[1]) - 1;
+            BNotification_HdlCache[BNotification_EndHdlIdx] = BUILD_UINT16(p[0], p[1]) - 1;
             
-            timeAppEndHdlIdx = 0;
+            BNotification_EndHdlIdx = 0;
           }
           
           // If UUID is of interest, store handle
           switch ( uuid )
           {
           case BATT_LEVEL_UUID:
-            timeAppHdlCache[HDL_BATT_LEVEL_START] = handle;
-            timeAppEndHdlIdx = HDL_BATT_LEVEL_END;
+            BNotification_HdlCache[HDL_BATT_LEVEL_START] = handle;
+            BNotification_EndHdlIdx = HDL_BATT_LEVEL_END;
             break;
             
           default:
@@ -730,25 +730,25 @@ static uint8 BNotification_App_DiscBatt( uint8 state, gattMsgEvent_t *pMsg )
           ( pMsg->method == ATT_ERROR_RSP ) )
       {
         // Special case of end handle at end of service
-        if ( timeAppEndHdlIdx != 0 )
+        if ( BNotification_EndHdlIdx != 0 )
         {
-          timeAppHdlCache[timeAppEndHdlIdx] = timeAppSvcEndHdl;
-          timeAppEndHdlIdx = 0;
+          BNotification_HdlCache[BNotification_EndHdlIdx] = BNotification_SvcEndHdl;
+          BNotification_EndHdlIdx = 0;
         }
         
         // If didn't find mandatory characteristic
-        if ( timeAppHdlCache[HDL_BATT_LEVEL_START] == 0 )
+        if ( BNotification_HdlCache[HDL_BATT_LEVEL_START] == 0 )
         {
           newState = DISC_FAILED;
         }
-        else if ( timeAppHdlCache[HDL_BATT_LEVEL_START] <
-                 timeAppHdlCache[HDL_BATT_LEVEL_END] )
+        else if ( BNotification_HdlCache[HDL_BATT_LEVEL_START] <
+                 BNotification_HdlCache[HDL_BATT_LEVEL_END] )
         {
           // Discover characteristic descriptors
-          GATT_DiscAllCharDescs( timeAppConnHandle,
-                                timeAppHdlCache[HDL_BATT_LEVEL_START] + 1,
-                                timeAppHdlCache[HDL_BATT_LEVEL_END],
-                                timeAppTaskId );
+          GATT_DiscAllCharDescs( BNotification_ConnHandle,
+                                BNotification_HdlCache[HDL_BATT_LEVEL_START] + 1,
+                                BNotification_HdlCache[HDL_BATT_LEVEL_END],
+                                BNotification_TaskID );
           
           newState = DISC_BATT_LVL_CCCD;
         }
@@ -779,7 +779,7 @@ static uint8 BNotification_App_DiscBatt( uint8 state, gattMsgEvent_t *pMsg )
                HI_UINT16(GATT_CLIENT_CHAR_CFG_UUID)) )
           {
             // CCCD found
-            timeAppHdlCache[HDL_BATT_LEVEL_CCCD] =
+            BNotification_HdlCache[HDL_BATT_LEVEL_CCCD] =
               pMsg->msg.findInfoRsp.info.btPair[i].handle;
             
             break;

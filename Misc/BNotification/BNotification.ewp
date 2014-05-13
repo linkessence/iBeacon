@@ -464,6 +464,7 @@
           <state>$PROJ_DIR$\OSAL\include</state>
           <state>$PROJ_DIR$\BLE\include</state>
           <state>$PROJ_DIR$\BLE\controller\include</state>
+          <state>$PROJ_DIR$\Profiles\DevInfo</state>
           <state>$PROJ_DIR$\Profiles\Roles</state>
           <state>$PROJ_DIR$\BLE\host</state>
           <state>$PROJ_DIR$\BLE\hci</state>
@@ -2444,7 +2445,7 @@
         <name>$PROJ_DIR$\OSAL\include\osal_bufmgr.h</name>
       </file>
       <file>
-        <name>$PROJ_DIR$\OSAL\include\osal_cbTimer.h</name>
+        <name>$PROJ_DIR$\OSAL\include\osal_cbtimer.h</name>
       </file>
       <file>
         <name>$PROJ_DIR$\OSAL\include\OSAL_Clock.h</name>
@@ -2474,6 +2475,15 @@
   </group>
   <group>
     <name>Profiles</name>
+    <group>
+      <name>DevInfo</name>
+      <file>
+        <name>$PROJ_DIR$\Profiles\DevInfo\devinfoservice.c</name>
+      </file>
+      <file>
+        <name>$PROJ_DIR$\Profiles\DevInfo\devinfoservice.h</name>
+      </file>
+    </group>
     <group>
       <name>Roles</name>
       <file>
